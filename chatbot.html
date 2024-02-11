@@ -51,7 +51,7 @@
         <h1>Noah Cha</h1>
     </header>
     <nav>
-        <a href="#">Home</a>
+        <a href="index.html">Home</a>
         <a href="#">About</a>
         <a href="#">Contact</a>
     </nav>
@@ -64,6 +64,10 @@
             const userInput = document.getElementById('user-input').value;
             const chatContainer = document.getElementById('chat-container');
             
+            require('dotenv').config(); // Load environment variables from .env file
+
+            const apiKey = process.env.OPENAI_API_KEY;
+
             // Display user message
             chatContainer.innerHTML += `<p>You: ${userInput}</p>`;
             
@@ -72,7 +76,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer OPENAI_API_KEY'
+                    'Authorization': 'Bearer apiKey'
                 },
                 body: JSON.stringify({
                     prompt: userInput,
