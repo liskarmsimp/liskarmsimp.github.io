@@ -31,11 +31,11 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer YOUR_API_KEY'
+                    'Authorization': 'Bearer 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'
                 },
                 body: JSON.stringify({
                     prompt: userInput,
-                    max_tokens: 50 // Adjust max_tokens as per your needs
+                    max_tokens: 500 // Adjust max_tokens as per your needs
                 })
             });
             const data = await response.json();
