@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Card Table</title>
+    <!-- 1. Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 2. Custom Styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Base card styling */
+        .item { /* Renamed from .card to .item to include chips */
+            width: 80px;
+            height: 112px;
+            background-color: white;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid #B0B0B0;
+            position: absolute;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 4px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .item:active {
+            cursor: grabbing;
+        }
+
+        .item.selected {
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.7); /* blue-500 ring */
+            z-index: 10000 !important; /* Bring selected to front */
+        }
+        
+        /* Private flip styling */
+        .item.private-flip-highlight {
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.7); /* red-500 ring */
+        }
+        
+        .item.selected.private-flip-highlight {
+            /* Combine selection and private flip shadows */
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.7), 0 0 0 8px rgba(239, 68, 68, 0.6);
+        }
+
+
+        /* Card face content */
+        .item .rank {
+            line-height: 1;
+        }
+        .item .suit {
+            font-size: 24px;
+            text-align: center;
+            line-height: 1;
+        }
+        .item .rank-bottom {
+            transform: rotate(180deg);
+            line-height: 1;
+        }
+        .item.red {
+            color: #EF4444; /* red-500 */
+        }
+        .item.black {
+            color: #111827; /* gray-900 */
+        }
+
+        /* Card back styling */
+        .item.face-down {
+            background-color: #3B82F6; /* blue-500 */
+            background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.1) 75%, transparent 75%, transparent);
+            background-size: 20px 20px;
+            border: 2px solid white;
+            color: transparent; /* Hide text content */
+        }
+        
+        /* Chip styling */
+        .item.chip {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            border-width: 4px;
+            border-style: dashed;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .item.chip.chip-1 {
+            background-color: #EFEFEF; /* Lighter gray */
+            color: #333;
+            border-color: #B0B0B0;
+        }
+        .item.chip.chip-5 {
+            background-color: #EF4444; /* red-500 */
+            border-color: #F87171; /* red-400 */
+        }
+        .item.chip.chip-25 {
+            background-color: #22C55E; /* green-500 */
+            border-color: #4ADE80; /* green-400 */
+        }
+        
+        /* NEW: Selected chip highlight */
+        .item.chip.selected {
+            border-style: solid;
+            border-color: #3B82F6; /* blue-500 */
+        }
+
+        /* Marquee selection box */
+        #selection-box {
+            position: absolute;
+            background-color: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.8);
+            z-index: 9999;
+            display: none;
+        }
+
+        /* Bank Drop Zone */
+        #bank-drop-zone {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 150px;
+            height: 100px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 2px dashed rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            z-index: 0;
+            pointer-events: none; /* Allows clicks to go through */
+            transition: background-color 0.2s;
+        }
+        #bank-drop-zone.active {
+            background-color: rgba(255, 255, 255, 0.3); /* Highlight when dragging chip */
+        }
+
+        /* Modal styling */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50000;
+        }
+
+        /* Player list input styling */
+        .player-name-input, .player-bank-input {
+            background: transparent;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .player-name-input:hover, .player-bank-input:hover {
+            background: rgba(0,0,0,0.1);
+        }
+        .player-name-input:focus, .player-bank-input:focus {
+            background: white;
+            color: #111;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.7);
+            outline: none;
+        }
+
+        /* Slider thumb styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #d3d3d3;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+            border-radius: 4px;
+        }
+        input[type=range]:hover {
+            opacity: 1;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3B82F6; /* blue-500 */
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        input[type=range]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3B82F6; /* blue-500 */
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        /* Hide/show elements */
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900 overflow-hidden h-screen">
+
+    <!-- Loading Indicator -->
+    <div id="loading-screen" class="absolute inset-0 bg-white/70 z-50000 flex flex-col items-center justify-center backdrop-blur-sm">
+        <svg class="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="text-lg font-medium text-blue-700 mt-4">Connecting to server...</p>
+    </div>
+
+    <!-- Room Selection Screen -->
+    <div id="room-screen" class="h-screen w-screen flex items-center justify-center bg-gray-200">
+        <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
+            <h1 class="text-3xl font-bold text-blue-600 mb-4">Card Table</h1>
+            <p class="text-gray-600 mb-6">Create a room or join one using a code.</p>
+            
+            <div class="mb-4">
+                <label for="room-code-input" class="block text-sm font-medium text-gray-700 mb-1 text-left">Room Code</label>
+                <input type="text" id="room-code-input" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 uppercase" placeholder="e.g. AB12CD">
+            </div>
+            
+            <div class="mb-4">
+                <label for="name-input" class="block text-sm font-medium text-gray-700 mb-1 text-left">Your Name</label>
+                <input type="text" id="name-input" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="e.g. Player 1">
+            </div>
+            
+            <button id="join-room-btn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-md font-semibold shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all">
+                Join Room
+            </button>
+            <button id="create-room-btn" class="w-full mt-3 bg-green-600 text-white py-3 px-4 rounded-md font-semibold shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all">
+                Create New Room
+            </button>
+            
+            <div class="mt-6 text-xs text-gray-500">
+                <p>Your User ID (for this session):</p>
+                <p id="user-id-display" class="font-mono bg-gray-100 p-1 rounded-sm break-all">Connecting...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Board Screen -->
+    <div id="game-screen" class="h-screen w-screen flex flex-col hidden">
+        <!-- Toolbar -->
+        <div class="w-full bg-white shadow-md p-2 flex items-center justify-between z-40 space-x-2">
+            <!-- Left Side: Table Actions -->
+            <div class="flex items-center space-x-3">
+                <button id="leave-room-btn" class="bg-red-600 text-white px-4 py-2 rounded-md font-medium hover:bg-red-700 transition-all shadow-sm">Leave</button>
+                <button id="add-deck-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md font-medium hover:bg-blue-700 transition-all shadow-sm">Add Deck</button>
+                <button id="gather-all-btn" class="bg-gray-600 text-white px-4 py-2 rounded-md font-medium hover:bg-gray-700 transition-all shadow-sm">Gather All</button>
+                <button id="shuffle-all-btn" class="bg-green-600 text-white px-4 py-2 rounded-md font-medium hover:bg-green-700 transition-all shadow-sm">Shuffle All</button>
+                <!-- NEW: Sort All Button -->
+                <button id="sort-all-btn" class="bg-sky-600 text-white px-4 py-2 rounded-md font-medium hover:bg-sky-700 transition-all shadow-sm">Sort All</button>
+                <button id="delete-all-btn" class="bg-red-600 text-white px-4 py-2 rounded-md font-medium hover:bg-red-700 transition-all shadow-sm">Delete All</button>
+            </div>
+            
+            <!-- Center: Bank & Chip Actions -->
+            <div class="flex-1 flex justify-center items-center space-x-4">
+                <div class="bg-gray-800 text-white font-bold p-2 px-4 rounded-lg shadow-inner">
+                    My Bank: $<span id="my-bank-display">0</span>
+                </div>
+                <div class="flex space-x-2">
+                    <button id="add-chip-1-btn" class="bg-gray-200 text-gray-800 w-10 h-10 rounded-full font-bold shadow-sm border-2 border-gray-400 hover:bg-gray-300">$1</button>
+                    <button id="add-chip-5-btn" class="bg-red-500 text-white w-10 h-10 rounded-full font-bold shadow-sm border-2 border-red-300 hover:bg-red-600">$5</button>
+                    <button id="add-chip-25-btn" class="bg-green-500 text-white w-10 h-10 rounded-full font-bold shadow-sm border-2 border-green-300 hover:bg-green-600">$25</button>
+                </div>
+            </div>
+
+            <!-- Right Side: Room Info & Player List -->
+            <div class="text-right w-64"> <!-- Increased width -->
+                <div class="text-sm font-medium text-gray-800">Room: <span id="room-code-display" class="font-bold text-blue-600 font-mono"></span></div>
+                <!-- Player List -->
+                <div id="player-list" class="mt-1 max-h-32 overflow-y-auto text-left pr-2 border-l-2 border-gray-200 pl-2">
+                    <!-- Players will be injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Game Area -->
+        <div id="game-board" class="flex-1 bg-green-800 relative overflow-hidden w-full h-full">
+            <!-- Items (Cards/Chips) will be dynamically added here -->
+
+            <!-- Bank Drop Zone -->
+            <div id="bank-drop-zone">
+                <span>Bank Chips</span>
+            </div>
+
+            <!-- Marquee Selection Box -->
+            <div id="selection-box"></div>
+
+            <!-- Contextual Toolbar (Floating) -->
+            <div id="contextual-toolbar" class="absolute bg-white p-2 flex items-center z-[40000] space-x-3 shadow-lg rounded-lg hidden">
+                <span class="text-sm font-medium text-gray-700">
+                    <span id="selection-count-display">0</span> items
+                </span>
+                <button id="group-selected-btn" class="bg-indigo-600 text-white px-3 py-1 rounded-md font-medium hover:bg-indigo-700 transition-all shadow-sm text-sm">Group</button>
+                <button id="line-up-btn" class="bg-purple-600 text-white px-3 py-1 rounded-md font-medium hover:bg-purple-700 transition-all shadow-sm text-sm">Line Up</button>
+                <button id="sort-selected-btn" class="bg-sky-600 text-white px-3 py-1 rounded-md font-medium hover:bg-sky-700 transition-all shadow-sm text-sm">Sort</button>
+                <button id="shuffle-selected-btn" class="bg-orange-500 text-white px-3 py-1 rounded-md font-medium hover:bg-orange-600 transition-all shadow-sm text-sm">Shuffle</button>
+                <button id="draw-selected-btn" class="bg-teal-600 text-white px-3 py-1 rounded-md font-medium hover:bg-teal-700 transition-all shadow-sm text-sm">Draw...</button>
+                <button id="delete-selected-btn" class="bg-red-600 text-white px-3 py-1 rounded-md font-medium hover:bg-red-700 transition-all shadow-sm text-sm">Delete</button>
+            </div>
+
+            <!-- Draw Popup (Floating) -->
+            <div id="draw-popup" class="absolute bg-white p-4 flex-col z-[41000] space-y-3 shadow-lg rounded-lg hidden w-64">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-md font-medium text-gray-900">Draw Cards</h4>
+                    <button id="close-draw-popup-btn" class="text-gray-500 font-bold text-xl hover:text-gray-900">&times;</button>
+                </div>
+                <p class="text-sm text-gray-600 -mt-2">Draw from top of stack:</p>
+                <div>
+                    <input type="range" id="draw-count-slider" min="1" max="52" value="1" class="w-full">
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="number" id="draw-count-input-popup" value="1" min="1" max="52" class="w-1/2 p-2 border border-gray-300 rounded-md shadow-sm text-center">
+                    <button id="confirm-draw-popup-btn" class="w-1/2 bg-blue-600 text-white px-4 py-2 rounded-md font-medium hover:bg-blue-700">Draw</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+
+    <!-- 3. Firebase SDKs -->
+    <script type="module">
+        // --- Firebase Imports ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc, 
+            onSnapshot, 
+            updateDoc,
+            setLogLevel
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- STEP 1: PASTE YOUR FIREBASE CONFIG HERE ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyD7U_YvZEQAqAfdzCmheHiyadYI_Y1gwRA",
+            authDomain: "cards-feea9.firebaseapp.com",
+            projectId: "cards-feea9",
+            storageBucket: "cards-feea9.firebasestorage.app",
+            messagingSenderId: "580614773408",
+            appId: "1:580614773408:web:5b10176d66df31925d47c5",
+            measurementId: "G-XJW08N30VV"
+        };
+        // --- END OF STEP 1 ---
+
+        // Use your project ID as the app ID
+        const appId = firebaseConfig.projectId || 'default-card-table'; 
+        const initialAuthToken = null; // We will use anonymous sign-in
+
+        // --- Firebase Initialization ---
+        let app, auth, db;
+        let isFirebaseInitialized = false; 
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            setLogLevel('Debug'); 
+            isFirebaseInitialized = true; 
+        } catch (e) {
+            console.error("Firebase initialization error:", e);
+            document.getElementById('loading-screen').innerText = "Error connecting. Please refresh.";
+        }
+
+        // --- Global State ---
+        let userId = null;
+        let currentRoomId = null;
+        let roomRef = null;
+        let roomUnsubscribe = null;
+        let roomData = { items: [], players: {} };
+        let maxZIndex = 0;
+        let isAppInitialized = false;
+        
+        // --- Selection & Dragging State ---
+        let selectedItemIds = new Set();
+        let isDragging = false;
+        let isSelecting = false; // For marquee
+        let dragStartPos = { x: 0, y: 0 };
+        let selectionStartPos = { x: 0, y: 0 };
+        let itemStartOffsets = new Map(); // Map<itemId, {x, y}>
+        let isDraggingChip = false;
+        let selectionStartMinX = 0; // For popup following
+        let selectionStartMinY = 0; // For popup following
+
+        // --- DOM Elements ---
+        let loadingScreen, roomScreen, gameScreen, roomCodeInput, joinRoomBtn, createRoomBtn,
+            userIdDisplay, gameBoard, selectionBox, addDeckBtn, gatherAllBtn, shuffleAllBtn,
+            roomCodeDisplay, contextualToolbar, selectionCountDisplay,
+            groupSelectedBtn, drawSelectedBtn, myBankDisplay, addChip1Btn, addChip5Btn,
+            addChip25Btn, bankDropZone, playerList,
+            nameInput, leaveRoomBtn, deleteAllBtn, deleteSelectedBtn, sortSelectedBtn, sortAllBtn,
+            drawPopup, closeDrawPopupBtn, drawCountSlider, drawCountInputPopup, confirmDrawPopupBtn, lineUpBtn, shuffleSelectedBtn; 
+
+
+        // --- Constants ---
+        const SUITS = ['S', 'H', 'C', 'D']; // Spades, Hearts, Clubs, Diamonds
+        const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        const ROOM_COLLECTION = 'card-rooms';
+        const ITEM_WIDTH_CARD = 80;
+        const ITEM_HEIGHT_CARD = 112;
+        const ITEM_WIDTH_CHIP = 60;
+        const ITEM_HEIGHT_CHIP = 60;
+        const SUITS_ORDER = { 'S': 1, 'H': 2, 'C': 3, 'D': 4 };
+        const RANKS_ORDER = { 'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13 };
+
+
+        // --- 1. Authentication & Initialization ---
+        
+        function assignDomElements() {
+            loadingScreen = document.getElementById('loading-screen');
+            roomScreen = document.getElementById('room-screen');
+            gameScreen = document.getElementById('game-screen');
+            roomCodeInput = document.getElementById('room-code-input');
+            joinRoomBtn = document.getElementById('join-room-btn');
+            createRoomBtn = document.getElementById('create-room-btn');
+            userIdDisplay = document.getElementById('user-id-display');
+            gameBoard = document.getElementById('game-board');
+            selectionBox = document.getElementById('selection-box');
+            addDeckBtn = document.getElementById('add-deck-btn');
+            gatherAllBtn = document.getElementById('gather-all-btn');
+            shuffleAllBtn = document.getElementById('shuffle-all-btn');
+            roomCodeDisplay = document.getElementById('room-code-display');
+            contextualToolbar = document.getElementById('contextual-toolbar');
+            selectionCountDisplay = document.getElementById('selection-count-display');
+            groupSelectedBtn = document.getElementById('group-selected-btn');
+            drawSelectedBtn = document.getElementById('draw-selected-btn');
+            myBankDisplay = document.getElementById('my-bank-display');
+            addChip1Btn = document.getElementById('add-chip-1-btn');
+            addChip5Btn = document.getElementById('add-chip-5-btn');
+            addChip25Btn = document.getElementById('add-chip-25-btn');
+            bankDropZone = document.getElementById('bank-drop-zone');
+            playerList = document.getElementById('player-list');
+            nameInput = document.getElementById('name-input');
+            leaveRoomBtn = document.getElementById('leave-room-btn');
+            lineUpBtn = document.getElementById('line-up-btn');
+            drawPopup = document.getElementById('draw-popup');
+            closeDrawPopupBtn = document.getElementById('close-draw-popup-btn');
+            drawCountSlider = document.getElementById('draw-count-slider');
+            drawCountInputPopup = document.getElementById('draw-count-input-popup');
+            confirmDrawPopupBtn = document.getElementById('confirm-draw-popup-btn');
+            shuffleSelectedBtn = document.getElementById('shuffle-selected-btn');
+            deleteAllBtn = document.getElementById('delete-all-btn');
+            deleteSelectedBtn = document.getElementById('delete-selected-btn');
+            sortSelectedBtn = document.getElementById('sort-selected-btn');
+            sortAllBtn = document.getElementById('sort-all-btn'); // NEW
+        }
+
+        function attachAppListeners() {
+            createRoomBtn.addEventListener('click', handleCreateRoom);
+            joinRoomBtn.addEventListener('click', handleJoinRoom);
+            gameBoard.addEventListener('mousedown', onBoardMouseDown);
+            addDeckBtn.addEventListener('click', handleAddDeck);
+            gatherAllBtn.addEventListener('click', handleGatherAll);
+            shuffleAllBtn.addEventListener('click', handleShuffleAll);
+            addChip1Btn.addEventListener('click', () => handleAddChip(1));
+            addChip5Btn.addEventListener('click', () => handleAddChip(5));
+            addChip25Btn.addEventListener('click', () => handleAddChip(25));
+            groupSelectedBtn.addEventListener('click', handleGroupSelected);
+            drawSelectedBtn.addEventListener('click', showDrawPopup);
+            leaveRoomBtn.addEventListener('click', handleLeaveRoom);
+            lineUpBtn.addEventListener('click', handleLineUp);
+            shuffleSelectedBtn.addEventListener('click', handleShuffleSelected);
+            closeDrawPopupBtn.addEventListener('click', hideDrawPopup);
+            confirmDrawPopupBtn.addEventListener('click', handleDrawCards);
+            drawCountSlider.addEventListener('input', syncDrawInputs);
+            drawCountInputPopup.addEventListener('input', syncDrawInputs);
+            deleteAllBtn.addEventListener('click', handleDeleteAll);
+            deleteSelectedBtn.addEventListener('click', handleDeleteSelected);
+            sortSelectedBtn.addEventListener('click', handleSortSelected);
+            sortAllBtn.addEventListener('click', handleSortAll); // NEW
+        }
+
+        async function authenticateUser() {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    console.log("User is signed in:", user.uid);
+                    userId = user.uid;
+                    
+                    if (!isAppInitialized) {
+                        isAppInitialized = true;
+                        assignDomElements();
+                        attachAppListeners();
+                        userIdDisplay.textContent = userId;
+                        loadingScreen.classList.add('hidden');
+                        console.log("App initialized.");
+                    }
+                } else {
+                    console.log("No user signed in, attempting auth...");
+                }
+            });
+
+            try {
+                console.log("Signing in anonymously...");
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Authentication Error:", error);
+                if (loadingScreen) {
+                    loadingScreen.innerText = "Authentication failed. Please refresh.";
+                } else {
+                    console.error("CRITICAL: loadingScreen not found.");
+                }
+            }
+        }
+
+        // --- 2. Room Logic ---
+        function handleCreateRoom() {
+            const newRoomId = generateRoomCode(6);
+            roomCodeInput.value = newRoomId;
+            handleJoinRoom();
+        }
+
+        function handleJoinRoom() {
+            const roomId = roomCodeInput.value.trim().toUpperCase();
+            const enteredName = nameInput.value.trim();
+
+            if (!roomId || !userId) return;
+
+            currentRoomId = roomId;
+            roomRef = doc(db, ROOM_COLLECTION, currentRoomId);
+            console.log("Joining room:", currentRoomId);
+
+            if (roomUnsubscribe) roomUnsubscribe();
+            loadingScreen.classList.remove('hidden');
+
+            roomUnsubscribe = onSnapshot(roomRef, (doc) => {
+                console.log("Received room snapshot");
+                if (!doc.exists()) {
+                    // Create room with players object and this user
+                    console.log("Room not found, creating new one...");
+                    const newRoomData = { 
+                        items: [], 
+                        players: {
+                            [userId]: { name: enteredName || 'Player 1', bank: 0 } // Use entered name
+                        } 
+                    };
+                    setDoc(roomRef, newRoomData)
+                        .catch(e => console.error("Error creating room:", e));
+                } else {
+                    // Room exists, update local state
+                    roomData = doc.data();
+                    if (!roomData.items) roomData.items = [];
+                    if (!roomData.players) roomData.players = {};
+                    
+                    if (!roomData.players[userId]) {
+                        // Add this user to the room, using the entered name
+                        const newPlayer = { 
+                            name: enteredName || `Player ${Object.keys(roomData.players).length + 1}`, 
+                            bank: 0 
+                        };
+                        updateDoc(roomRef, { 
+                            [`players.${userId}`]: newPlayer 
+                        }).catch(e => console.error("Error adding new player:", e));
+                    }
+                    
+                    maxZIndex = roomData.items.reduce((max, item) => Math.max(max, item.zIndex || 0), 0);
+                    
+                    renderGameBoard();
+                    renderPlayerList();
+                }
+                
+                roomCodeDisplay.textContent = currentRoomId;
+                roomScreen.classList.add('hidden');
+                gameScreen.classList.remove('hidden');
+                loadingScreen.classList.add('hidden');
+
+            }, (error) => {
+                console.error("Snapshot error:", error);
+                loadingScreen.innerText = "Error connecting to room. Check console.";
+            });
+        }
+
+        function handleLeaveRoom() {
+            if (!roomRef || !userId) return;
+
+            const currentPlayers = { ...roomData.players };
+            delete currentPlayers[userId];
+            updateDoc(roomRef, { players: currentPlayers })
+                .catch(e => console.error("Error removing player:", e));
+
+            if (roomUnsubscribe) roomUnsubscribe();
+
+            roomRef = null;
+            currentRoomId = null;
+            roomData = { items: [], players: {} };
+            selectedItemIds.clear();
+            
+            roomCodeInput.value = '';
+            nameInput.value = '';
+            
+            gameScreen.classList.add('hidden');
+            roomScreen.classList.remove('hidden');
+
+            updateSelectionVisuals();
+            hideDrawPopup();
+        }
+
+        // --- 3. Game Board Rendering ---
+        
+        function renderPlayerList() {
+            if (!playerList) return;
+            playerList.innerHTML = '';
+            const players = roomData.players || {};
+
+            const myBank = players[userId] ? players[userId].bank : 0;
+            myBankDisplay.textContent = myBank;
+            
+            for (const id in players) {
+                const player = players[id];
+                const playerEl = document.createElement('div');
+                playerEl.className = 'flex justify-between items-center text-sm mb-1';
+                
+                if (id === userId) {
+                    playerEl.innerHTML = `
+                        <input type="text" value="${player.name}" class="player-name-input font-bold w-2/3 text-blue-600" id="player-name-input" placeholder="Your Name" />
+                        <span class="font-bold w-1/3 text-right">$<input type="number" value="${player.bank}" class="player-bank-input w-3/4 text-right font-bold" data-id="${id}" id="player-bank-input-${id}" /></span>
+                    `;
+                } else {
+                    playerEl.innerHTML = `
+                        <span class="font-medium w-2/3 truncate" title="${player.name}">${player.name}</span>
+                        <span class="font-medium w-1/3 text-right">$<input type="number" value="${player.bank}" class="player-bank-input w-3/4 text-right" data-id="${id}" id="player-bank-input-${id}" /></span>
+                    `;
+                }
+                playerList.appendChild(playerEl);
+            }
+            
+            if (playerList.querySelector('#player-name-input')) {
+                 playerList.querySelector('#player-name-input').addEventListener('change', handleNameChange);
+            }
+            playerList.querySelectorAll('.player-bank-input').forEach(input => {
+                input.addEventListener('change', handleBankChange);
+            });
+        }
+        
+        function handleNameChange(e) {
+            const newName = e.target.value.trim() || "Player";
+            updateDoc(roomRef, { [`players.${userId}.name`]: newName })
+                .catch(e => console.error("Error updating name:", e));
+        }
+
+        function handleBankChange(e) {
+            const targetUserId = e.target.dataset.id;
+            const newBank = parseInt(e.target.value, 10);
+            if (!isNaN(newBank) && targetUserId && roomData.players[targetUserId]) {
+                updateDoc(roomRef, { [`players.${targetUserId}.bank`]: newBank })
+                    .catch(e => console.error("Error updating bank:", e));
+            }
+        }
+
+        function renderGameBoard() {
+            Array.from(gameBoard.getElementsByClassName('item')).forEach(el => removeItemListeners(el));
+            
+            gameBoard.innerHTML = '';
+            gameBoard.appendChild(selectionBox); 
+            gameBoard.appendChild(bankDropZone);
+            gameBoard.appendChild(contextualToolbar);
+            gameBoard.appendChild(drawPopup);
+
+            roomData.items.forEach(itemData => {
+                const itemEl = createItemElement(itemData);
+                gameBoard.appendChild(itemEl);
+            });
+            
+            updateSelectionVisuals();
+        }
+
+        function createItemElement(itemData) {
+            const itemEl = document.createElement('div');
+            itemEl.id = itemData.id;
+            itemEl.className = 'item';
+            itemEl.style.left = `${itemData.x}px`;
+            itemEl.style.top = `${itemData.y}px`;
+            itemEl.style.zIndex = itemData.zIndex || 0;
+
+            if (itemData.type === 'chip') {
+                itemEl.classList.add('chip', `chip-${itemData.value}`);
+                itemEl.innerHTML = `<span>$${itemData.value}</span>`;
+            } else {
+                const isPubliclyFlipped = itemData.isFaceUp;
+                const isPrivatelyFlipped = itemData.privateFlip && itemData.privateFlip[userId];
+                const showFace = isPubliclyFlipped || isPrivatelyFlipped;
+
+                if (showFace) {
+                    const suit = getSuitSymbol(itemData.suit);
+                    const colorClass = (itemData.suit === 'H' || itemData.suit === 'D') ? 'red' : 'black';
+                    itemEl.classList.add(colorClass);
+                    
+                    itemEl.innerHTML = `
+                        <div class="rank">${itemData.rank}</div>
+                        <div class="suit">${suit}</div>
+                        <div class="rank rank-bottom">${itemData.rank}</div>
+                    `;
+                    
+                    if (isPrivatelyFlipped && !isPubliclyFlipped) {
+                        itemEl.classList.add('private-flip-highlight');
+                    }
+                } else {
+                    itemEl.classList.add('face-down');
+                }
+            }
+
+            itemEl.addEventListener('mousedown', onItemMouseDown);
+            itemEl.addEventListener('contextmenu', onItemRightClick);
+            return itemEl;
+        }
+
+        function removeItemListeners(itemEl) {
+            itemEl.removeEventListener('mousedown', onItemMouseDown);
+            itemEl.removeEventListener('contextmenu', onItemRightClick);
+        }
+
+        // --- 4. Item Interaction Handlers ---
+        function onItemMouseDown(e) {
+            // FIXED: Only trigger selection logic on LEFT click (button 0)
+            if (e.button !== 0) return;
+
+            e.preventDefault();
+            e.stopPropagation(); 
+            
+            const itemId = e.currentTarget.id;
+            const item = roomData.items.find(i => i.id === itemId);
+            if (!item) return;
+            
+            const ctrlHeld = e.ctrlKey || e.metaKey;
+
+            if (ctrlHeld) {
+                if (selectedItemIds.has(itemId)) {
+                    selectedItemIds.delete(itemId);
+                } else {
+                    selectedItemIds.add(itemId);
+                }
+            } else {
+                if (!selectedItemIds.has(itemId)) {
+                    selectedItemIds.clear();
+                    selectedItemIds.add(itemId);
+                }
+            }
+            
+            // Store selection top-left for popup following
+            if (selectedItemIds.size > 1) {
+                selectionStartMinX = Infinity;
+                selectionStartMinY = Infinity;
+                selectedItemIds.forEach(id => {
+                    const i = roomData.items.find(item => item.id === id);
+                    if (i) {
+                        selectionStartMinX = Math.min(selectionStartMinX, i.x);
+                        selectionStartMinY = Math.min(selectionStartMinY, i.y);
+                    }
+                });
+            }
+            
+            updateSelectionVisuals(); // Call this to update visuals and set initial popup position
+
+            isDragging = true;
+            isDraggingChip = item.type === 'chip';
+            if (isDraggingChip) {
+                bankDropZone.classList.add('active');
+            }
+            dragStartPos = { x: e.clientX, y: e.clientY };
+            
+            const newZ = ++maxZIndex;
+            itemStartOffsets.clear();
+
+            const updatedItems = roomData.items.map(i => {
+                if (selectedItemIds.has(i.id)) {
+                    return { ...i, zIndex: newZ };
+                }
+                return i;
+            });
+
+            selectedItemIds.forEach(id => {
+                const i = roomData.items.find(item => item.id === id);
+                const itemEl = document.getElementById(id);
+                if (i && itemEl) {
+                    itemEl.style.zIndex = newZ; 
+                    const rect = itemEl.getBoundingClientRect();
+                    itemStartOffsets.set(id, {
+                        startX: i.x,
+                        startY: i.y,
+                        clickOffsetX: e.clientX - rect.left,
+                        clickOffsetY: e.clientY - rect.top,
+                    });
+                }
+            });
+            
+            updateDoc(roomRef, { items: updatedItems })
+                .catch(e => console.error("Error updating z-index:", e));
+
+            window.addEventListener('mousemove', onItemDrag);
+            window.addEventListener('mouseup', onItemDrop);
+        }
+
+        function onItemDrag(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            const deltaX = e.clientX - dragStartPos.x;
+            const deltaY = e.clientY - dragStartPos.y;
+
+            selectedItemIds.forEach(id => {
+                const itemEl = document.getElementById(id);
+                const offset = itemStartOffsets.get(id);
+                if (itemEl && offset) {
+                    const newX = offset.startX + deltaX;
+                    const newY = offset.startY + deltaY;
+                    itemEl.style.transform = `translate(${newX - offset.startX}px, ${newY - offset.startY}px)`;
+                }
+            });
+
+            // FIXED: Make popup follow drag
+            if (selectedItemIds.size > 1 && !contextualToolbar.classList.contains('hidden')) {
+                const newTop = Math.max(10, (selectionStartMinY + deltaY) - 50); // 10px from top
+                const newLeft = Math.max(10, selectionStartMinX + deltaX);     // 10px from left
+                
+                // Get the difference from the *styled* position
+                const currentTop = parseFloat(contextualToolbar.style.top);
+                const currentLeft = parseFloat(contextualToolbar.style.left);
+                
+                contextualToolbar.style.transform = `translate(${newLeft - currentLeft}px, ${newTop - currentTop}px)`;
+            }
+        }
+
+        function onItemDrop(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            const gameBoardRect = gameBoard.getBoundingClientRect();
+
+            window.removeEventListener('mousemove', onItemDrag);
+            window.removeEventListener('mouseup', onItemDrop);
+
+            // FIXED: Reset popup transform and let updateSelectionVisuals handle final position
+            contextualToolbar.style.transform = '';
+
+            if (isDraggingChip) {
+                bankDropZone.classList.remove('active');
+                isDraggingChip = false;
+            }
+
+            const deltaX = e.clientX - dragStartPos.x;
+            const deltaY = e.clientY - dragStartPos.y;
+
+            let itemsToBank = [];
+            let itemsToMove = [];
+            let newPositions = new Map();
+            
+            const dropRect = bankDropZone.getBoundingClientRect();
+            const droppedInBank = e.clientX >= dropRect.left && e.clientX <= dropRect.right &&
+                                  e.clientY >= dropRect.top && e.clientY <= dropRect.bottom;
+
+            // FIXED: New boundary clamping to move group as one
+            let minTargetX = Infinity, minTargetY = Infinity;
+            let maxTargetX = -Infinity, maxTargetY = -Infinity;
+            
+            selectedItemIds.forEach(id => {
+                const item = roomData.items.find(i => i.id === id);
+                const offset = itemStartOffsets.get(id);
+                if (!item || !offset) return;
+                
+                const itemWidth = item.type === 'chip' ? ITEM_WIDTH_CHIP : ITEM_WIDTH_CARD;
+                const itemHeight = item.type === 'chip' ? ITEM_HEIGHT_CHIP : ITEM_HEIGHT_CARD;
+                
+                const newX = offset.startX + deltaX;
+                const newY = offset.startY + deltaY;
+
+                minTargetX = Math.min(minTargetX, newX);
+                minTargetY = Math.min(minTargetY, newY);
+                maxTargetX = Math.max(maxTargetX, newX + itemWidth);
+                maxTargetY = Math.max(maxTargetY, newY + itemHeight);
+            });
+            
+            // Calculate adjustment
+            let adjX = 0;
+            let adjY = 0;
+            if (minTargetX < 0) adjX = -minTargetX;
+            if (minTargetY < 0) adjY = -minTargetY;
+            if (maxTargetX > gameBoardRect.width) adjX = gameBoardRect.width - maxTargetX;
+            if (maxTargetY > gameBoardRect.height) adjY = gameBoardRect.height - maxTargetY;
+
+            selectedItemIds.forEach(id => {
+                const itemEl = document.getElementById(id);
+                if (itemEl) itemEl.style.transform = ''; 
+
+                const offset = itemStartOffsets.get(id);
+                const item = roomData.items.find(i => i.id === id);
+                if (!offset || !item) return;
+
+                if (item.type === 'chip' && droppedInBank) {
+                    itemsToBank.push(item);
+                } else {
+                    const newX = offset.startX + deltaX + adjX; // Apply adjustment
+                    const newY = offset.startY + deltaY + adjY; // Apply adjustment
+
+                    itemsToMove.push(item);
+                    newPositions.set(id, {
+                        x: newX,
+                        y: newY
+                    });
+                }
+            });
+
+            if (itemsToBank.length > 0) {
+                const bankedValue = itemsToBank.reduce((total, chip) => total + chip.value, 0);
+                const myBank = roomData.players[userId] ? roomData.players[userId].bank : 0;
+                const newTotal = myBank + bankedValue;
+                
+                const remainingItems = roomData.items.filter(item => !itemsToBank.some(b => b.id === item.id));
+                
+                updateDoc(roomRef, { 
+                    items: remainingItems, 
+                    [`players.${userId}.bank`]: newTotal 
+                }).catch(e => console.error("Error banking chips:", e));
+            
+            } else if (itemsToMove.length > 0) {
+                const updatedItems = roomData.items.map(item => {
+                    if (newPositions.has(item.id)) {
+                        const newPos = newPositions.get(item.id);
+                        return { ...item, x: newPos.x, y: newPos.y };
+                    }
+                    return item;
+                });
+                
+                updateDoc(roomRef, { items: updatedItems })
+                    .catch(e => console.error("Error committing item move:", e));
+            }
+            
+            // Update popup position after drop
+            updateSelectionVisuals();
+        }
+        
+        // FIXED: New flip logic
+        function onItemRightClick(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const itemId = e.currentTarget.id;
+            const ctrlHeld = e.ctrlKey || e.metaKey;
+            
+            const clickedItem = roomData.items.find(i => i.id === itemId);
+            if (!clickedItem || clickedItem.type === 'chip') return;
+
+            const isClickedItemSelected = selectedItemIds.has(itemId);
+            const itemIdsToFlip = isClickedItemSelected ? selectedItemIds : new Set([itemId]);
+            
+            // Determine target state based on the clicked item
+            // NEW FLIP LOGIC:
+            // 1. Public Flip (no ctrl): Toggle between Face Down and Publicly Up
+            // 2. Private Flip (ctrl): Toggle between Face Down and Privately Up (for me)
+            
+            const updatedItems = roomData.items.map(item => {
+                if (item.type !== 'chip' && itemIdsToFlip.has(item.id)) {
+                    
+                    const newPrivateFlip = { ...(item.privateFlip || {}) };
+                    let newIsFaceUp = item.isFaceUp;
+
+                    if (ctrlHeld) {
+                        // PRIVATE FLIP LOGIC
+                        const targetPrivateState = !newPrivateFlip[userId]; // Toggle my private state
+                        newPrivateFlip[userId] = targetPrivateState;
+                        newIsFaceUp = false; // Private flips are never public
+                        
+                    } else {
+                        // PUBLIC FLIP LOGIC
+                        const targetPublicState = !item.isFaceUp; // Toggle public state
+                        newIsFaceUp = targetPublicState;
+                        newPrivateFlip[userId] = false; // A public flip clears my private view
+                    }
+                    
+                    return { ...item, isFaceUp: newIsFaceUp, privateFlip: newPrivateFlip };
+                }
+                return item;
+            });
+
+            updateDoc(roomRef, { items: updatedItems })
+                .catch(e => console.error("Error flipping item(s):", e));
+        }
+
+        // --- 5. Board Interaction Handlers (Marquee Select) ---
+        function onBoardMouseDown(e) {
+            if (e.target.closest('#draw-popup')) return;
+            if (!e.target.closest('.item') && !e.target.closest('#contextual-toolbar')) {
+                 hideDrawPopup();
+            }
+
+            if (e.target.closest('.item') || e.target.closest('#contextual-toolbar')) return;
+
+            e.preventDefault();
+            isSelecting = true;
+            selectionStartPos = { x: e.clientX, y: e.clientY };
+            const boardRect = gameBoard.getBoundingClientRect();
+
+            selectionBox.style.left = `${e.clientX - boardRect.left}px`;
+            selectionBox.style.top = `${e.clientY - boardRect.top}px`;
+            selectionBox.style.width = '0px';
+            selectionBox.style.height = '0px';
+            selectionBox.style.display = 'block';
+
+            if (!e.ctrlKey && !e.metaKey) {
+                selectedItemIds.clear();
+                updateSelectionVisuals();
+            }
+
+            window.addEventListener('mousemove', onMarqueeDrag);
+            window.addEventListener('mouseup', onMarqueeDrop);
+        }
+
+        function onMarqueeDrag(e) {
+            if (!isSelecting) return;
+            e.preventDefault();
+
+            const boardRect = gameBoard.getBoundingClientRect();
+            const startX = selectionStartPos.x - boardRect.left;
+            const startY = selectionStartPos.y - boardRect.top;
+            const currentX = e.clientX - boardRect.left;
+            const currentY = e.clientY - boardRect.top;
+
+            const newLeft = Math.min(startX, currentX);
+            const newTop = Math.min(startY, currentY);
+            const newWidth = Math.abs(currentX - startX);
+            const newHeight = Math.abs(currentY - startY);
+
+            selectionBox.style.left = `${newLeft}px`;
+            selectionBox.style.top = `${newTop}px`;
+            selectionBox.style.width = `${newWidth}px`;
+            selectionBox.style.height = `${newHeight}px`;
+            
+            const selectionRect = selectionBox.getBoundingClientRect();
+            
+            roomData.items.forEach(item => {
+                const itemEl = document.getElementById(item.id);
+                if (!itemEl) return;
+                
+                const itemRect = itemEl.getBoundingClientRect();
+                
+                if (!(selectionRect.right < itemRect.left || 
+                      selectionRect.left > itemRect.right || 
+                      selectionRect.bottom < itemRect.top || 
+                      selectionRect.top > itemRect.bottom)) {
+                    selectedItemIds.add(item.id);
+                } else {
+                    if (!e.ctrlKey && !e.metaKey) {
+                         selectedItemIds.delete(item.id);
+                    }
+                }
+            });
+            updateSelectionVisuals();
+        }
+
+        function onMarqueeDrop(e) {
+            if (!isSelecting) return;
+            isSelecting = false;
+            
+            selectionBox.style.display = 'none';
+
+            window.removeEventListener('mousemove', onMarqueeDrag);
+            window.removeEventListener('mouseup', onMarqueeDrop);
+            
+            updateSelectionVisuals();
+        }
+
+        // --- 6. Toolbar Button Actions ---
+        
+        function handleAddDeck() {
+            console.log("Adding new deck...");
+            const newDeck = [];
+            const newDeckId = crypto.randomUUID().substring(0, 4);
+            const baseZIndex = ++maxZIndex;
+
+            for (let s_idx = 0; s_idx < SUITS.length; s_idx++) {
+                for (let r_idx = 0; r_idx < RANKS.length; r_idx++) {
+                    const suit = SUITS[s_idx];
+                    const rank = RANKS[r_idx];
+                    const index = s_idx * RANKS.length + r_idx; // index 0-51
+                    newDeck.push({
+                        id: `deck-${newDeckId}-${suit}-${rank}`,
+                        type: 'card',
+                        suit: suit,
+                        rank: rank,
+                        isFaceUp: false,
+                        privateFlip: {},
+                        x: 20 + index * 0.2, // FIXED: Neat pile
+                        y: 20 + index * 0.2, // FIXED: Neat pile
+                        zIndex: baseZIndex + index
+                    });
+                }
+            }
+            
+            maxZIndex += newDeck.length; // Update global max z-index
+
+            updateDoc(roomRef, {
+                items: [...roomData.items, ...newDeck]
+            }).catch(e => console.error("Error adding deck:", e));
+        }
+
+        function handleAddChip(value) {
+            console.log(`Adding chip: $${value}`);
+            const newChip = {
+                id: `chip-${crypto.randomUUID().substring(0, 8)}`,
+                type: 'chip',
+                value: value,
+                x: 100 + Math.random() * 50,
+                y: 100 + Math.random() * 50,
+                zIndex: ++maxZIndex
+            };
+            
+            updateDoc(roomRef, {
+                items: [...roomData.items, newChip]
+            }).catch(e => console.error("Error adding chip:", e));
+        }
+
+        function handleGatherAll() {
+            console.log("Gathering all items...");
+            const gatheredItems = roomData.items.map((item, index) => ({
+                ...item,
+                x: 20 + index * 0.2, 
+                y: 20 + index * 0.2,
+                isFaceUp: item.type === 'chip' ? true : false, 
+                privateFlip: {},
+                zIndex: index + 1
+            }));
+            
+            updateDoc(roomRef, { items: gatheredItems })
+                .catch(e => console.error("Error gathering items:", e));
+        }
+
+        function handleShuffleAll() {
+            let shuffledItems = [...roomData.items];
+            let currentIndex = shuffledItems.length;
+            
+            while (currentIndex != 0) {
+                let randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+
+                [shuffledItems[currentIndex], shuffledItems[randomIndex]] = [
+                shuffledItems[randomIndex], shuffledItems[currentIndex]];
+            }
+            
+            const gatheredAndShuffledItems = shuffledItems.map((item, index) => ({
+                ...item,
+                x: 20 + index * 0.2, 
+                y: 20 + index * 0.2,
+                isFaceUp: item.type === 'chip' ? true : false, 
+                privateFlip: {},
+                zIndex: index + 1
+            }));
+
+            updateDoc(roomRef, { items: gatheredAndShuffledItems })
+                .catch(e => console.error("Error shuffling items:", e));
+        }
+        
+        // NEW: Sort All Function
+        function handleSortAll() {
+            console.log("Sorting all items...");
+            let sortedItems = [...roomData.items];
+            sortedItems.sort((a, b) => getSortValue(a) - getSortValue(b));
+            
+            // Call performLineUp with a fixed start position
+            performLineUp(sortedItems, 20, 20);
+        }
+        
+        function handleDeleteAll() {
+            console.log("Deleting all items...");
+            updateDoc(roomRef, { items: [] })
+                .catch(e => console.error("Error deleting all items:", e));
+        }
+
+
+        // --- 7. Contextual Actions ---
+
+        function handleDeleteSelected() {
+            if (selectedItemIds.size === 0) return;
+            console.log("Deleting selected items...");
+            
+            const remainingItems = roomData.items.filter(item => !selectedItemIds.has(item.id));
+            
+            selectedItemIds.clear();
+            updateSelectionVisuals(); // Hide popup
+            
+            updateDoc(roomRef, { items: remainingItems })
+                .catch(e => console.error("Error deleting selected items:", e));
+        }
+
+        function handleGroupSelected() {
+            if (selectedItemIds.size === 0) return;
+            
+            let targetX = 0, targetY = 0, count = 0;
+            
+            selectedItemIds.forEach(id => {
+                const item = roomData.items.find(i => i.id === id);
+                if (item) {
+                    targetX += item.x;
+                    targetY += item.y;
+                    count++;
+                }
+            });
+            
+            if (count > 0) {
+                targetX = targetX / count;
+                targetY = targetY / count;
+            }
+
+            const newZ = ++maxZIndex;
+            let offsetIndex = 0;
+            const updatedItems = roomData.items.map(item => {
+                if (selectedItemIds.has(item.id)) {
+                    offsetIndex++;
+                    return {
+                        ...item,
+                        x: targetX + offsetIndex * 0.2, // Stack neatly
+                        y: targetY + offsetIndex * 0.2,
+                        zIndex: newZ + offsetIndex // Stack neatly
+                    };
+                }
+                return item;
+            });
+
+            updateDoc(roomRef, { items: updatedItems })
+                .catch(e => console.error("Error grouping items:", e));
+        }
+        
+        // NEW: Refactored Line Up / Sort Logic
+        
+        // This function performs the physical layout
+        // Refactored to accept optional start position
+        function performLineUp(itemsToLayout, startX = null, startY = null) {
+            if (itemsToLayout.length === 0) return;
+
+            const gameBoardRect = gameBoard.getBoundingClientRect();
+            const rowSpacing = 20; // 20px vertical spacing for new rows
+
+            let minX = Infinity, minY = Infinity;
+            if (startX === null || startY === null) {
+                // Find the top-left-most item to start the layout from
+                itemsToLayout.forEach(item => {
+                    minX = Math.min(minX, item.x);
+                    minY = Math.min(minY, item.y);
+                });
+            } else {
+                minX = startX;
+                minY = startY;
+            }
+            
+            const newZ = ++maxZIndex;
+            let currentX = minX;
+            let currentY = minY;
+            const spacing = 20;
+            const itemsToUpdate = new Map();
+            
+            itemsToLayout.forEach((item, index) => {
+                const itemWidth = item.type === 'chip' ? ITEM_WIDTH_CHIP : ITEM_WIDTH_CARD;
+                if (currentX + itemWidth > gameBoardRect.width && currentX !== minX) { // Added check to prevent wrapping if first item is too wide
+                    currentX = minX;
+                    currentY += ITEM_HEIGHT_CARD + rowSpacing;
+                }
+
+                itemsToUpdate.set(item.id, {
+                    x: currentX,
+                    y: currentY,
+                    zIndex: newZ + index
+                });
+                currentX += itemWidth + spacing;
+            });
+
+            const updatedItems = roomData.items.map(item => {
+                if (itemsToUpdate.has(item.id)) {
+                    return { ...item, ...itemsToUpdate.get(item.id) };
+                }
+                return item;
+            });
+
+            updateDoc(roomRef, { items: updatedItems })
+                .catch(e => console.error("Error in performLineUp:", e));
+        }
+        
+        // "Line Up" button - respects z-index (stack order)
+        function handleLineUp() {
+            let selectedItems = [];
+            selectedItemIds.forEach(id => {
+                const item = roomData.items.find(i => i.id === id);
+                if (item) selectedItems.push(item);
+            });
+            
+            // Sort by z-index to respect stack order
+            selectedItems.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+            
+            performLineUp(selectedItems); // No start pos, uses item's current minX/minY
+        }
+
+        // "Sort" button - respects suit/rank
+        function handleSortSelected() {
+            let selectedItems = [];
+            selectedItemIds.forEach(id => {
+                const item = roomData.items.find(i => i.id === id);
+                if (item) selectedItems.push(item);
+            });
+
+            // Sort by suit/rank/value
+            selectedItems.sort((a, b) => getSortValue(a) - getSortValue(b));
+            
+            performLineUp(selectedItems); // No start pos, uses item's current minX/minY
+        }
+        
+        // Helper for sorting
+        function getSortValue(item) {
+            if (item.type === 'chip') {
+                return item.value; // Chips sort first by value
+            }
+            if (item.type === 'card') {
+                const suitValue = SUITS_ORDER[item.suit] || 0;
+                const rankValue = RANKS_ORDER[item.rank] || 0;
+                // Cards sort after chips (e.g., 100+), then by suit, then by rank
+                return 100 + (suitValue * 100) + rankValue;
+            }
+            return 0; // Should not happen
+        }
+
+
+        function handleShuffleSelected() {
+            if (selectedItemIds.size === 0) return;
+
+            let selectedItems = [];
+            let unselectedItems = [];
+            let targetX = 0, targetY = 0, count = 0;
+
+            roomData.items.forEach(item => {
+                if (selectedItemIds.has(item.id)) {
+                    selectedItems.push(item);
+                    targetX += item.x;
+                    targetY += item.y;
+                    count++;
+                } else {
+                    unselectedItems.push(item);
+                }
+            });
+
+            if (count > 0) {
+                targetX = targetX / count;
+                targetY = targetY / count;
+            }
+
+            let currentIndex = selectedItems.length;
+            while (currentIndex != 0) {
+                let randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [selectedItems[currentIndex], selectedItems[randomIndex]] = [
+                selectedItems[randomIndex], selectedItems[currentIndex]];
+            }
+
+            const newZ = ++maxZIndex;
+            const shuffledAndStackedItems = selectedItems.map((item, index) => ({
+                ...item,
+                x: targetX + index * 0.2, // Stack neatly
+                y: targetY + index * 0.2,
+                zIndex: newZ + index
+            }));
+
+            const updatedItems = [...unselectedItems, ...shuffledAndStackedItems];
+            updateDoc(roomRef, { items: updatedItems })
+                .catch(e => console.error("Error shuffling selected items:", e));
+        }
+
+
+        function showDrawPopup() {
+            if (selectedItemIds.size === 0) return;
+            
+            const cardCount = [...selectedItemIds].filter(id => {
+                const item = roomData.items.find(i => i.id === id);
+                return item && item.type !== 'chip';
+            }).length;
+
+            if (cardCount === 0) return; // No cards selected
+
+            drawCountInputPopup.value = "1";
+            drawCountSlider.value = "1";
+            drawCountInputPopup.max = cardCount;
+            drawCountSlider.max = cardCount;
+            
+            const toolbarRect = contextualToolbar.getBoundingClientRect();
+            // FIXED: Define boardRect
+            const boardRect = gameBoard.getBoundingClientRect();
+            
+            let newLeft = toolbarRect.left - boardRect.left;
+            let newTop = toolbarRect.bottom - boardRect.top + 8;
+
+            if (newLeft + drawPopup.offsetWidth > boardRect.width) {
+                newLeft = boardRect.width - drawPopup.offsetWidth - 10;
+            }
+            if (newTop + drawPopup.offsetHeight > boardRect.height) {
+                newTop = toolbarRect.top - boardRect.top - drawPopup.offsetHeight - 8;
+            }
+            newLeft = Math.max(10, newLeft);
+
+            drawPopup.style.left = `${newLeft}px`;
+            drawPopup.style.top = `${newTop}px`;
+            
+            drawPopup.classList.remove('hidden');
+        }
+
+        function hideDrawPopup() {
+            drawPopup.classList.add('hidden');
+        }
+        
+        function syncDrawInputs(e) {
+            const value = e.target.value;
+            drawCountSlider.value = value;
+            drawCountInputPopup.value = value;
+        }
+
+        function handleDrawCards() {
+            const count = parseInt(drawCountInputPopup.value, 10);
+            if (isNaN(count) || count <= 0) return;
+
+            let selectedStack = [];
+            selectedItemIds.forEach(id => {
+                const item = roomData.items.find(i => i.id === id);
+                if (item && item.type !== 'chip') selectedStack.push(item);
+            });
+            selectedStack.sort((a, b) => (b.zIndex || 0) - (a.zIndex || 0));
+
+            const cardsToDraw = selectedStack.slice(0, count);
+            if (cardsToDraw.length === 0) return;
+            
+            const newZ = ++maxZIndex;
+            const targetX = cardsToDraw[0].x + 100;
+            const targetY = cardsToDraw[0].y;
+            
+            let drawnCardIds = new Set(cardsToDraw.map(c => c.id));
+
+            const updatedItems = roomData.items.map(item => {
+                if (drawnCardIds.has(item.id)) {
+                    const drawItem = cardsToDraw.find(d => d.id === item.id);
+                    const staggerOffset = cardsToDraw.indexOf(drawItem) * 10;
+                    return {
+                        ...item,
+                        x: targetX + staggerOffset,
+                        y: targetY + staggerOffset,
+                        zIndex: newZ + cardsToDraw.indexOf(drawItem) 
+                    };
+                }
+                return item;
+            });
+            
+            drawnCardIds.forEach(id => selectedItemIds.delete(id));
+            updateSelectionVisuals();
+            
+            updateDoc(roomRef, { items: updatedItems })
+                .catch(e => console.error("Error drawing cards:", e));
+
+            hideDrawPopup();
+        }
+
+        // --- 8. Helper Functions ---
+        
+        function updateSelectionVisuals() {
+            if (!gameBoard) return;
+            
+            gameBoard.querySelectorAll('.item.selected').forEach(el => el.classList.remove('selected'));
+            selectedItemIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('selected');
+            });
+            
+            const count = selectedItemIds.size;
+            if (count > 1) { 
+                selectionCountDisplay.textContent = count;
+                
+                let minX = Infinity, minY = Infinity;
+                let hasCard = false;
+                
+                selectedItemIds.forEach(id => {
+                    const item = roomData.items.find(i => i.id === id);
+                    if (item) {
+                        minX = Math.min(minX, item.x);
+                        minY = Math.min(minY, item.y);
+                        if (item.type !== 'chip') hasCard = true;
+                    }
+                });
+                
+                const newTop = Math.max(10, minY - 50);
+                const newLeft = Math.max(10, minX);
+
+                contextualToolbar.style.left = `${newLeft}px`;
+                contextualToolbar.style.top = `${newTop}px`;
+                contextualToolbar.classList.remove('hidden');
+                
+                if (hasCard) {
+                    drawSelectedBtn.classList.remove('hidden');
+                } else {
+                    drawSelectedBtn.classList.add('hidden');
+                }
+                
+            } else {
+                contextualToolbar.classList.add('hidden');
+                hideDrawPopup();
+            }
+        }
+        
+        function generateRoomCode(length) {
+            const chars = 'ABCDEFGHIJKLMNPQRSTUVWXYZ123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        function getSuitSymbol(suit) {
+            return { 'S': '♠', 'H': '♥', 'C': '♣', 'D': '♦' }[suit];
+        }
+
+        // --- 9. Initialization ---
+        
+        window.onload = () => {
+            if (isFirebaseInitialized) {
+                authenticateUser();
+            } else {
+                console.error("Firebase not initialized. App cannot start.");
+            }
+        };
+
+    </script>
+</body>
+</html>
